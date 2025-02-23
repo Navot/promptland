@@ -54,16 +54,16 @@ export const ollamaApi = {
   // Send a streaming query to the model
   queryStream: async (
     prompt: string,
-    modelId: string,
+    model: string,
     onChunk: (chunk: string) => void,
-    parameters?: ModelParameters,
-    previousMessages: Message[] = [],
-    systemPrompt?: string,
-    abortSignal?: AbortSignal
+    parameters: ModelParameters,
+    context: Message[],
+    systemPrompt: string,
+    signal?: AbortSignal
   ) => {
     const messages = [
       ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-      ...previousMessages.map(msg => ({
+      ...context.map(msg => ({
         role: msg.role,
         content: msg.content
       })),
@@ -73,18 +73,26 @@ export const ollamaApi = {
       }
     ];
 
+    // Log the complete conversation being sent to the model
+    console.log('Sending to model:', {
+      model,
+      systemPrompt,
+      messages,
+      parameters
+    });
+
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: modelId,
+        model: model,
         messages,
         stream: true,
         options: parameters
       }),
-      signal: abortSignal
+      signal: signal
     });
 
     const reader = response.body?.getReader();

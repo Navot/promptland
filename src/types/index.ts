@@ -1,4 +1,5 @@
 export interface Message {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
@@ -24,4 +25,17 @@ export interface ModelParameters {
   maxTokens: number;
   topP: number;
   frequencyPenalty: number;
+}
+
+export interface SystemPrompt {
+  id: string;
+  content: string;
+  created: number;
+  name?: string;
+}
+
+export interface SettingsState {
+  modelParameters: ModelParameters;
+  systemPrompt: string;
+  systemPromptHistory: SystemPrompt[];
 } 

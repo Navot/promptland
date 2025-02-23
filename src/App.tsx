@@ -92,6 +92,8 @@ function App() {
     );
 
     try {
+      console.log('Using system prompt:', systemPrompt);
+      
       await ollamaApi.queryStream(
         content,
         selectedModel,
