@@ -55,8 +55,14 @@ const chatSlice = createSlice({
         }
       }
     },
+    deleteSession: (state, action: PayloadAction<string>) => {
+      state.sessions = state.sessions.filter(session => session.id !== action.payload);
+      if (state.currentSessionId === action.payload) {
+        state.currentSessionId = state.sessions[0]?.id || null;
+      }
+    },
   },
 });
 
-export const { createSession, addMessage, setCurrentSession, resetSession, updateMessage } = chatSlice.actions;
+export const { createSession, addMessage, setCurrentSession, deleteSession, resetSession, updateMessage } = chatSlice.actions;
 export default chatSlice.reducer; 

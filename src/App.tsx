@@ -36,7 +36,14 @@ function App() {
     localStorage.setItem('lastSelectedModel', modelId);
     
     if (!keepContext && currentSessionId) {
-      dispatch(resetSession(currentSessionId));
+      // Instead of resetting the current session, create a new one
+      const newSession = {
+        id: uuidv4(),
+        messages: [],
+        modelId: modelId,
+        created: Date.now(),
+      };
+      dispatch(createSession(newSession));
     }
   };
 
@@ -46,6 +53,22 @@ function App() {
       abortController.current = null;
       setIsGenerating(false);
     }
+  };
+
+  const handleNewConversation = () => {
+    // Check if current session exists and has messages
+    if (currentSession && currentSession.messages.length === 0) {
+      // If current session is empty, don't create a new one
+      return;
+    }
+
+    const newSession = {
+      id: uuidv4(),
+      messages: [],
+      modelId: selectedModel,
+      created: Date.now(),
+    };
+    dispatch(createSession(newSession));
   };
 
   const handleSendMessage = async (content: string) => {
@@ -58,13 +81,12 @@ function App() {
     abortController.current = new AbortController();
 
     if (!currentSessionId) {
-      const newSession = {
+      dispatch(createSession({
         id: uuidv4(),
         messages: [],
         modelId: selectedModel,
         created: Date.now(),
-      };
-      dispatch(createSession(newSession));
+      }));
     }
 
     dispatch(
@@ -151,7 +173,7 @@ function App() {
             </div>
           </div>
           <div className="border-t flex-1 overflow-y-auto">
-            <SessionHistory />
+            <SessionHistory onNewSession={handleNewConversation} />
           </div>
         </div>
         
