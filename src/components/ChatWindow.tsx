@@ -8,6 +8,44 @@ interface ChatWindowProps {
   onSendMessage: (content: string) => void;
 }
 
+const formatMessageContent = (content: string) => {
+  // Check if we're in the middle of a think block
+  if (content.startsWith('<think>') && !content.includes('</think>')) {
+    return (
+      <div className="chat-message-think">
+        <ReactMarkdown className="prose dark:prose-invert max-w-none prose-sm">
+          {content.replace('<think>', '').trim()}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
+  // Check for complete think block
+  const thinkMatch = content.match(/^<think>(.*?)<\/think>\s*([\s\S]*)$/s);
+  
+  if (thinkMatch) {
+    const [_, thinkContent, mainContent] = thinkMatch;
+    return (
+      <>
+        <div className="chat-message-think">
+          <ReactMarkdown className="prose dark:prose-invert max-w-none prose-sm">
+            {thinkContent.trim()}
+          </ReactMarkdown>
+        </div>
+        <ReactMarkdown className="prose dark:prose-invert max-w-none prose-sm">
+          {mainContent.trim()}
+        </ReactMarkdown>
+      </>
+    );
+  }
+
+  return (
+    <ReactMarkdown className="prose dark:prose-invert max-w-none prose-sm">
+      {content}
+    </ReactMarkdown>
+  );
+};
+
 export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,9 +118,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
                     : 'chat-message-assistant'
                 }`}
               >
-                <ReactMarkdown className="prose dark:prose-invert max-w-none prose-sm">
-                  {message.content}
-                </ReactMarkdown>
+                {formatMessageContent(message.content)}
               </div>
             </div>
           ))
