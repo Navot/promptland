@@ -83,12 +83,14 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({ onNewSession }) 
             onClick={() => handleSessionClick(session.id)}
           >
             <div className="flex-1 min-w-0">
-              <p className="text-sm truncate">
-                {session.title || session.messages[0]?.content.slice(0, 30) || 'New Conversation'}
-              </p>
-              <p className="text-xs text-gray-500">
-                {new Date(session.created).toLocaleDateString()}
-              </p>
+              <div className="sidebar-conversation p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer text-left">
+                <div className="font-medium truncate">{session.title || session.messages[0]?.content.slice(0, 30) || 'New Conversation'}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {session.messages.length > 0 
+                    ? session.messages[session.messages.length - 1].content.substring(0, 50) + '...'
+                    : 'No messages'}
+                </div>
+              </div>
             </div>
             <button
               onClick={(e) => handleDeleteClick(e, session.id)}

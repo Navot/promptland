@@ -11,6 +11,7 @@ import { dirname } from 'path';
 import { ParamsDictionary } from 'express-serve-static-core';
 import { logLLMRequest, logDBQuery } from './utils/logger.js';
 import { extractTextFromPDFBuffer } from './pdfProcessing.js';
+import http from 'http';
 
 // Types
 interface ProjectParams extends ParamsDictionary {
@@ -30,6 +31,7 @@ interface QueryBody {
 interface FileRequestBody {
   chunkSize?: number;
   model?: string;
+  embeddingType?: 'summary' | 'direct';
 }
 
 // Create a custom request type for file uploads
@@ -50,6 +52,17 @@ interface DeleteFileParams extends ParamsDictionary {
   projectId: string;
   fileId: string;
 }
+
+// Add this type
+interface ProcessingStatus {
+  currentChunk: number;
+  totalChunks: number;
+  status: 'processing' | 'completed' | 'error';
+  error?: string;
+}
+
+// Add a Map to store processing status
+const processingStatus = new Map<string, ProcessingStatus>();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,7 +85,10 @@ const initDb = async () => {
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      created INTEGER NOT NULL
+      created INTEGER NOT NULL,
+      embedding_model TEXT NOT NULL,
+      chunk_size INTEGER NOT NULL,
+      embedding_type TEXT NOT NULL CHECK (embedding_type IN ('summary', 'direct'))
     );
 
     CREATE TABLE IF NOT EXISTS files (
@@ -90,7 +106,7 @@ const initDb = async () => {
       file_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
       chunk_text TEXT NOT NULL,
-      short_description TEXT NOT NULL,
+      short_description TEXT NULL,
       embedding_vector TEXT NOT NULL,
       created INTEGER NOT NULL,
       FOREIGN KEY (file_id) REFERENCES files (id),
@@ -101,6 +117,51 @@ const initDb = async () => {
   return db;
 };
 
+// Add this function after initDb
+const migrateDatabase = async (db: any) => {
+  try {
+    // Check if tables need migration
+    const tableInfo = await db.all("PRAGMA table_info(chunks)");
+    const shortDescriptionColumn = tableInfo.find((col: any) => col.name === 'short_description');
+    
+    if (shortDescriptionColumn && shortDescriptionColumn.notnull === 1) {
+      console.log('Migrating database: Updating short_description to be nullable...');
+      await db.exec(`
+        BEGIN TRANSACTION;
+        
+        -- Create temporary table with new schema
+        CREATE TABLE chunks_new (
+          id TEXT PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          chunk_text TEXT NOT NULL,
+          short_description TEXT NULL,
+          embedding_vector TEXT NOT NULL,
+          created INTEGER NOT NULL,
+          FOREIGN KEY (file_id) REFERENCES files (id),
+          FOREIGN KEY (project_id) REFERENCES projects (id)
+        );
+        
+        -- Copy data from old table
+        INSERT INTO chunks_new 
+        SELECT * FROM chunks;
+        
+        -- Drop old table
+        DROP TABLE chunks;
+        
+        -- Rename new table
+        ALTER TABLE chunks_new RENAME TO chunks;
+        
+        COMMIT;
+      `);
+      console.log('Migration complete');
+    }
+  } catch (error) {
+    console.error('Migration failed:', error);
+    throw error;
+  }
+};
+
 // Initialize Express app
 const app = express();
 app.use(cors());
@@ -109,6 +170,8 @@ app.use(express.json());
 // Configure multer for file uploads
 const upload = multer({ dest: uploadsDir });
 const db = initDb();
+
+const OLLAMA_BASE_URL = 'http://127.0.0.1:11434';  // Use IPv4 explicitly
 
 // Helper function to split text into chunks
 const splitTextIntoChunks = (text: string, chunkSize: number = 1000): string[] => {
@@ -130,60 +193,96 @@ const splitTextIntoChunks = (text: string, chunkSize: number = 1000): string[] =
 };
 
 // Add this helper function at the top
-const checkOllamaConnection = async (): Promise<boolean> => {
+const checkOllamaConnection = async (model: string): Promise<boolean> => {
   try {
-    const response = await fetch('http://localhost:11434/api/version');
-    return response.ok;
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'test' }],
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Failed chat test:', await response.text());
+      return false;
+    }
+
+    const data = await response.json();
+    return !!data.message?.content;
   } catch (error) {
+    console.error('Ollama connection error:', error);
     return false;
   }
+};
+
+// Add this helper function
+const ollamaRequest = async (endpoint: string, body: any): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: '127.0.0.1',
+      port: 11434,
+      path: endpoint,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (error) {
+          reject(new Error(`Failed to parse response: ${error.message}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(JSON.stringify(body));
+    req.end();
+  });
 };
 
 // Update generateShortDescription function
 const generateShortDescription = async (chunkText: string, model: string = 'llama2'): Promise<string> => {
   try {
-    // Check if text is valid UTF-8
-    if (!isValidUTF8(chunkText)) {
-      console.error('Invalid text content detected');
-      return 'Error: Invalid text content';
-    }
-
-    // Check Ollama connection
-    const isOllamaRunning = await checkOllamaConnection();
-    if (!isOllamaRunning) {
-      console.error('Ollama is not running. Please start Ollama first.');
-      return 'Error: Ollama not running';
-    }
-
     const prompt = `Summarize the following text in 1-2 sentences:\n${chunkText}`;
     logLLMRequest('generate', prompt, model);
     
     console.log('Sending request to Ollama...');
-    const response = await fetch('http://localhost:11434/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        model, 
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        stream: false 
-      })
+    const data = await ollamaRequest('/api/chat', { 
+      model, 
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      stream: false
     });
 
-    if (!response.ok) {
-      throw new Error(`Ollama returned status ${response.status}`);
+    if (!data.message?.content) {
+      throw new Error('No content in response');
     }
 
-    const data = await response.json();
     console.log('Received response from Ollama');
     return data.message.content.trim();
   } catch (error) {
     console.error('Error generating description:', error);
-    return 'Error generating description';
+    throw error;
   }
 };
 
@@ -200,20 +299,22 @@ const isValidUTF8 = (text: string): boolean => {
 // Helper function to generate embeddings using Ollama
 const generateEmbedding = async (text: string, model: string = 'llama2'): Promise<number[]> => {
   try {
-    const response = await fetch('http://localhost:11434/api/embeddings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt: text
-      })
+    logLLMRequest('embed', text, model);
+    console.log('Sending embedding request to Ollama...');
+    
+    const data = await ollamaRequest('/api/embeddings', {
+      model,
+      prompt: text
     });
 
-    const data = await response.json();
+    if (!data.embedding) {
+      throw new Error('No embedding in response');
+    }
+    
     return data.embedding;
   } catch (error) {
     console.error('Error generating embedding:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -232,6 +333,14 @@ const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
+// Add interface for project creation request body
+interface ProjectCreateBody {
+  name: string;
+  embedding_model: string;  // snake_case to match what client is sending
+  chunk_size: number;       // snake_case to match what client is sending
+  embedding_type: 'summary' | 'direct';  // snake_case to match what client is sending
+}
+
 // API Routes with proper types
 app.get('/api/projects', async (_req: Request, res: Response) => {
   try {
@@ -242,22 +351,62 @@ app.get('/api/projects', async (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/projects', async (req, res) => {
-  try {
-    const { name } = req.body;
-    const id = uuidv4();
-    const created = Date.now();
+app.post('/api/projects', 
+  ((req: Request<{}, any, ProjectCreateBody>, res: Response) => {
+    (async () => {
+      try {
+        const { 
+          name, 
+          embedding_model, 
+          chunk_size, 
+          embedding_type 
+        } = req.body;
 
-    await (await db).run(
-      'INSERT INTO projects (id, name, created) VALUES (?, ?, ?)',
-      [id, name, created]
-    );
+        console.log('Received project creation request:', req.body);
 
-    res.status(201).json({ id, name, created });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+        if (!name || !embedding_model || !chunk_size || !embedding_type) {
+          return res.status(400).json({ 
+            error: 'Missing required fields: name, embedding_model, chunk_size, and embedding_type are required' 
+          });
+        }
+
+        if (!['summary', 'direct'].includes(embedding_type)) {
+          return res.status(400).json({ 
+            error: 'embedding_type must be either "summary" or "direct"' 
+          });
+        }
+
+        const id = uuidv4();
+        const created = Date.now();
+
+        // Insert into database (already using snake_case)
+        await (await db).run(
+          `INSERT INTO projects (
+            id, name, created, embedding_model, chunk_size, embedding_type
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [id, name, created, embedding_model, chunk_size, embedding_type]
+        );
+
+        // Return response with snake_case fields to match client expectations
+        const project = {
+          id,
+          name,
+          created,
+          embedding_model,
+          chunk_size,
+          embedding_type
+        };
+
+        res.status(201).json(project);
+      } catch (error) {
+        console.error('Error creating project:', error);
+        res.status(500).json({ 
+          error: error instanceof Error ? error.message : 'Internal server error' 
+        });
+      }
+    })();
+  }) as RequestHandler
+);
 
 app.get('/api/projects/:projectId/files', async (req, res) => {
   try {
@@ -274,92 +423,158 @@ app.get('/api/projects/:projectId/files', async (req, res) => {
 
 app.post('/api/projects/:projectId/files', 
   upload.single('file'),
-  ((req: FileUploadRequest, res: Response, next: NextFunction) => {
+  ((req: FileUploadRequest, res: Response) => {
     (async () => {
       try {
         const { projectId } = req.params;
-        const { chunkSize = 1000, model = 'llama2' } = req.body;
         const file = req.file;
-
+        
         if (!file) {
-          res.status(400).json({ error: 'No file uploaded' });
-          return;
+          return res.status(400).json({ error: 'No file uploaded' });
         }
 
         // Create file record
         const fileId = uuidv4();
         const created = Date.now();
-        
+
         await (await db).run(
           'INSERT INTO files (id, project_id, filename, created, status) VALUES (?, ?, ?, ?, ?)',
           [fileId, projectId, file.originalname, created, 'processing']
         );
 
-        // Process file immediately instead of in background
-        console.log('=== File Upload Processing ===');
-        console.log(`1. File received: ${file.originalname}`);
-        const filePath = file.path;
-        console.log(`2. File path: ${filePath}`);
+        // Initialize processing status
+        processingStatus.set(fileId, {
+          currentChunk: 0,
+          totalChunks: 0, // Will be updated during processing
+          status: 'processing'
+        });
 
-        // Check file type using original filename
-        const isPDF = file.originalname.toLowerCase().endsWith('.pdf');
-        console.log(`3. File type: ${isPDF ? 'PDF' : 'Other'}`);
-        console.log(`   Original name: ${file.originalname}`);
-        console.log(`   Temp path: ${filePath}`);
+        // Send initial response
+        res.status(201).json({
+          id: fileId,
+          project_id: projectId,
+          filename: file.originalname,
+          created,
+          status: 'processing',
+          chunk_count: 0
+        });
 
-        if (isPDF) {
-          console.log('\n=== PDF Processing Started ===');
+        // Process file in background
+        (async () => {
           try {
-            console.log('4. Reading file buffer...');
-            const fileBuffer = await fs.promises.readFile(filePath);
-            console.log('5. Buffer read complete');
-            console.log('Buffer details:', {
-              size: fileBuffer.length,
-              isBuffer: Buffer.isBuffer(fileBuffer),
-              firstBytes: fileBuffer.slice(0, 20).toString('hex')
-            });
-
-            console.log('6. Starting text extraction...');
-            const rawText = await extractTextFromPDFBuffer(fileBuffer);
-            console.log('7. Text extraction complete');
+            console.log(`Starting processing for file ${fileId}`);
+            const pdfBuffer = fs.readFileSync(file.path);
+            const text = await extractTextFromPDFBuffer(pdfBuffer);
+            console.log(`Extracted ${text.length} characters of text`);
             
-            if (rawText) {
-              console.log('\n=== Text Preview ===');
-              console.log(rawText.slice(0, 200));
-              console.log('=== End Preview ===\n');
-            } else {
-              console.log('WARNING: No text extracted');
+            const project = await (await db).get(
+              'SELECT chunk_size, embedding_model, embedding_type FROM projects WHERE id = ?',
+              [projectId]
+            );
+
+            const chunks = splitTextIntoChunks(text, project.chunk_size);
+            console.log(`Split text into ${chunks.length} chunks`);
+            
+            // Set the total chunks count in the database immediately
+            await (await db).run(
+              'UPDATE files SET chunk_count = ? WHERE id = ?',
+              [chunks.length, fileId]
+            );
+            
+            // Update total chunks in status
+            processingStatus.set(fileId, {
+              currentChunk: 0,
+              totalChunks: chunks.length,
+              status: 'processing'
+            });
+            
+            console.log(`Updated processing status: ${JSON.stringify(processingStatus.get(fileId))}`);
+
+            let chunkCount = 0;
+
+            for (const chunkText of chunks) {
+              const chunkId = uuidv4();
+              
+              console.log(`Processing chunk ${chunkCount + 1}/${chunks.length}`);
+              
+              // Generate embedding
+              const embedding = await generateEmbedding(chunkText, project.embedding_model);
+              
+              // Insert chunk into database
+              await (await db).run(
+                `INSERT INTO chunks (
+                  id, file_id, project_id, chunk_text, embedding_vector, created
+                ) VALUES (?, ?, ?, ?, ?, ?)`,
+                [
+                  chunkId,
+                  fileId,
+                  projectId,
+                  chunkText,
+                  JSON.stringify(embedding),
+                  Date.now()
+                ]
+              );
+              
+              chunkCount++;
+              
+              // Update processing status with current chunk only, keep total fixed
+              processingStatus.set(fileId, {
+                currentChunk: chunkCount,
+                totalChunks: chunks.length, // Keep this fixed
+                status: 'processing'
+              });
+              
+              console.log(`Updated processing status: currentChunk=${chunkCount}, totalChunks=${chunks.length}`);
             }
 
-            return res.json({
-              id: fileId,
-              projectId,
-              filename: file.originalname,
-              status: 'debug',
-              bufferSize: fileBuffer.length,
-              textInfo: {
-                extracted: !!rawText,
-                length: rawText?.length || 0,
-                preview: rawText?.slice(0, 100) || 'null'
-              }
+            // Mark file as completed
+            await (await db).run(
+              'UPDATE files SET status = ? WHERE id = ?',
+              ['completed', fileId]
+            );
+            
+            // Update final status
+            processingStatus.set(fileId, {
+              currentChunk: chunks.length,
+              totalChunks: chunks.length,
+              status: 'completed'
             });
+
+            console.log(`Processing complete for file ${fileId}`);
           } catch (error) {
             console.error('PDF processing error:', error);
-            return res.json({
-              id: fileId,
-              projectId,
-              filename: file.originalname,
+            
+            // Update file status to error
+            await (await db).run(
+              'UPDATE files SET status = ? WHERE id = ?',
+              ['error', fileId]
+            );
+            
+            // Update error status
+            processingStatus.set(fileId, {
+              currentChunk: 0,
+              totalChunks: 0,
               status: 'error',
-              error: error.message || 'PDF processing failed'
+              error: error instanceof Error ? error.message : 'Unknown error'
             });
+          } finally {
+            // Clean up uploaded file
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+            
+            // Remove status after 5 minutes
+            setTimeout(() => {
+              processingStatus.delete(fileId);
+            }, 5 * 60 * 1000);
           }
-        } else {
-          console.log('\n=== Non-PDF file processing ===');
-          // ... rest of the code for non-PDF files
-        }
+        })();
       } catch (error) {
-        console.error('Error:', error);
-        next(error);
+        console.error('Error handling file upload:', error);
+        // Only send error response if headers haven't been sent
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Error processing file' });
+        }
       }
     })();
   }) as FileUploadHandler
@@ -469,30 +684,24 @@ app.post('/api/projects/:projectId/query',
         
         logLLMRequest('generate', prompt, model);
         
-        const response = await fetch('http://localhost:11434/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            model, 
-            messages: [
-              {
-                role: 'system',
-                content: `You are a helpful assistant. Use the following context to answer the user's question.
-                  If the answer is not in the context, say "I don't have enough information to answer that question."
-                  
-                  Context:
-                  ${context}`
-              },
-              {
-                role: 'user',
-                content: query
-              }
-            ],
-            stream: false 
-          })
+        const data = await ollamaRequest('/api/chat', { 
+          model, 
+          messages: [
+            {
+              role: 'system',
+              content: `You are a helpful assistant. Use the following context to answer the user's question.
+                If the answer is not in the context, say "I don't have enough information to answer that question."
+                
+                Context:
+                ${context}`
+            },
+            {
+              role: 'user',
+              content: query
+            }
+          ],
+          stream: false 
         });
-        
-        const data = await response.json();
         
         res.json({
           answer: data.message.content,
@@ -537,10 +746,138 @@ app.get('/api/projects/:projectId/status', async (req, res) => {
   }
 });
 
-// Start server
-const PORT = 3002;
-app.listen(PORT, () => {
-  console.log(`RAG server running on port ${PORT}`);
+// Add this after database initialization
+const cleanupProcessingFiles = async () => {
+  console.log('Cleaning up files in processing state...');
+  try {
+    const processingFiles = await (await db).all(
+      'SELECT id FROM files WHERE status = ?',
+      ['processing']
+    );
+    
+    console.log(`Found ${processingFiles.length} files in processing state`);
+    
+    for (const file of processingFiles) {
+      console.log(`Marking file ${file.id} as error`);
+      await (await db).run(
+        'UPDATE files SET status = ? WHERE id = ?',
+        ['error', file.id]
+      );
+    }
+    
+    console.log('Cleanup complete');
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+  }
+};
+
+// Update initServer to run migration
+const initServer = async () => {
+  const database = await initDb();
+  await migrateDatabase(database);
+  await cleanupProcessingFiles();
+  
+  const PORT = 3002;
+  app.listen(PORT, () => {
+    console.log(`RAG server running on port 3002`);
+  });
+};
+
+app.get('/api/projects/:projectId/files/:fileId/status', async (req, res) => {
+  const { fileId } = req.params;
+  
+  // Get status from map
+  const status = processingStatus.get(fileId);
+  if (status) {
+    res.json(status);
+    return;
+  }
+
+  // If not in map, check database
+  const file = await (await db).get(
+    'SELECT status, chunk_count FROM files WHERE id = ?',
+    [fileId]
+  );
+
+  if (!file) {
+    res.status(404).json({ error: 'File not found' });
+    return;
+  }
+
+  // Return status based on database
+  res.json({
+    currentChunk: file.chunk_count || 0,
+    totalChunks: file.chunk_count || 0, // If processing is done, current = total
+    status: file.status
+  });
 });
+
+// Add a debug endpoint
+app.get('/api/debug/processing-status', (req, res) => {
+  const statusMap = Array.from(processingStatus.entries()).reduce((acc, [key, value]) => {
+    acc[key] = value;
+    return acc;
+  }, {} as Record<string, ProcessingStatus>);
+  
+  res.json({
+    processingStatusCount: processingStatus.size,
+    processingStatus: statusMap
+  });
+});
+
+// Add cancel processing endpoint
+app.post('/api/projects/:projectId/files/:fileId/cancel',
+  ((req: Request<{ projectId: string; fileId: string }>, res: Response, next: NextFunction) => {
+    (async () => {
+      try {
+        const { projectId, fileId } = req.params;
+        
+        console.log(`Cancelling processing for file ${fileId}`);
+        
+        // Check if file exists and belongs to project
+        const file = await (await db).get(
+          'SELECT * FROM files WHERE id = ? AND project_id = ?',
+          [fileId, projectId]
+        );
+        
+        if (!file) {
+          return res.status(404).json({ error: 'File not found' });
+        }
+        
+        // Only allow cancelling files that are in processing state
+        if (file.status !== 'processing') {
+          return res.status(400).json({ 
+            error: 'Only processing files can be cancelled' 
+          });
+        }
+        
+        // Update file status to cancelled
+        await (await db).run(
+          'UPDATE files SET status = ? WHERE id = ?',
+          ['error', fileId]
+        );
+        
+        // Update processing status
+        const status = processingStatus.get(fileId);
+        if (status) {
+          processingStatus.set(fileId, {
+            ...status,
+            status: 'error',
+            error: 'Processing cancelled by user'
+          });
+        }
+        
+        res.json({ success: true });
+      } catch (error) {
+        console.error('Error cancelling processing:', error);
+        res.status(500).json({ 
+          error: error instanceof Error ? error.message : 'Internal server error' 
+        });
+      }
+    })();
+  }) as RequestHandler<{ projectId: string; fileId: string }>
+);
+
+initServer();
 
 export { app as default }; 

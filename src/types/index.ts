@@ -16,15 +16,18 @@ export interface Project {
   id: string;
   name: string;
   created: number;
+  embedding_model: string;
+  chunk_size: number;
+  embedding_type: 'summary' | 'direct';
 }
 
 export interface DocumentFile {
   id: string;
-  projectId: string;
+  project_id: string;
   filename: string;
-  created: number;
   status: 'processing' | 'completed' | 'error';
-  chunkCount?: number;
+  chunk_count?: number;
+  created: number;
 }
 
 export interface Chunk {
@@ -39,8 +42,12 @@ export interface Chunk {
 
 export interface RagQueryResult {
   answer: string;
-  sourceChunks: Chunk[];
-  queryEmbedding?: number[];
+  sourceChunks: {
+    id: string;
+    chunk_text: string;
+    short_description: string | null;
+    similarity: number;
+  }[];
 }
 
 export interface RagSettings {

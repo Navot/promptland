@@ -3,6 +3,8 @@ import { persistStore, persistReducer } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import settingsReducer from './settingsSlice';
 import chatReducer from './chatSlice';
+import ragReducer from './ragSlice';
+import uiReducer from './uiSlice';
 
 const settingsPersistConfig = {
   key: 'settings',
@@ -20,6 +22,8 @@ export const store = configureStore({
   reducer: {
     settings: persistReducer(settingsPersistConfig, settingsReducer),
     chat: persistReducer(chatPersistConfig, chatReducer),
+    rag: ragReducer,
+    ui: uiReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

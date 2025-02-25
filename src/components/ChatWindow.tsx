@@ -95,7 +95,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
     <div className="flex flex-col h-full">
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2"
+        className="flex-1 overflow-y-auto p-1 space-y-0.5 chat-container"
         onScroll={handleScroll}
       >
         {messages.length === 0 ? (
@@ -118,23 +118,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
                     : 'chat-message-assistant'
                 }`}
               >
-                {formatMessageContent(message.content)}
+                <div className="message-bubble px-2 py-1 rounded mb-0.5 max-w-3/4 break-words text-left">
+                  {formatMessageContent(message.content)}
+                </div>
               </div>
             </div>
           ))
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="sticky bottom-0 p-4 bg-white dark:bg-gray-900 border-t dark:border-gray-800 mt-auto">
-        <form onSubmit={handleSubmit} className="flex space-x-2">
+      <div className="sticky bottom-0 p-1 bg-white dark:bg-gray-900 border-t dark:border-gray-800 mt-auto chat-input-container">
+        <form onSubmit={handleSubmit} className="flex space-x-1">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="input"
+            className="input text-xs py-0.5 chat-input"
             placeholder="Type your message..."
           />
-          <button type="submit" className="btn btn-primary whitespace-nowrap">
+          <button type="submit" className="btn btn-primary whitespace-nowrap text-xs py-0.5 px-1.5 chat-send-button">
             Send
           </button>
         </form>

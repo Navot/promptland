@@ -5,7 +5,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { SessionHistory } from './components/SessionHistory';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useDispatch, useSelector } from 'react-redux';
-import { addMessage, createSession, resetSession, updateMessage } from './store/chatSlice';
+import { addMessage, createSession, resetSession, updateMessage, setSelectedConversation } from './store/chatSlice';
 import { RootState } from './store';
 import { v4 as uuidv4 } from 'uuid';
 import { ollamaApi } from './api/ollama';
@@ -13,6 +13,13 @@ import { ErrorDisplay } from './components/ErrorDisplay';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { ChartBarIcon } from '@heroicons/react/24/outline';
 import { RagTab } from './components/RagTab';
+import { Sidebar } from './components/Sidebar';
+import { setActiveTab } from './store/uiSlice';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Layout } from './components/Layout';
+import { ChatTab } from './components/ChatTab';
+import { SettingsTab } from './components/SettingsTab';
+import './App.css';
 
 type SidePanel = 'settings' | 'performance' | null;
 type ActiveTab = 'chat' | 'rag';
@@ -37,7 +44,15 @@ function App() {
   const systemPrompt = useSelector((state: RootState) => state.settings.systemPrompt);
   const [showPerformance, setShowPerformance] = useState(false);
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
+  const activeTab = useSelector((state: RootState) => state.ui.activeTab);
+  const { conversations, selectedConversationId } = useSelector((state: RootState) => state.chat);
+
+  // Set a default conversation when app loads if none is selected
+  useEffect(() => {
+    if (conversations.length > 0 && !selectedConversationId) {
+      dispatch(setSelectedConversation(conversations[0].id));
+    }
+  }, [conversations, selectedConversationId, dispatch]);
 
   const handleModelSelect = (modelId: string) => {
     setSelectedModel(modelId);
@@ -163,44 +178,25 @@ function App() {
     setSidePanel(current => current === panel ? null : panel);
   };
 
+  const handleTabChange = (tab: 'chat' | 'rag') => {
+    dispatch(setActiveTab(tab));
+  };
+
   return (
     <ErrorBoundary>
-      <div className="flex h-screen">
-        <div className="w-64 border-r flex flex-col fixed left-0 top-0 h-full bg-white dark:bg-gray-900">
-          <div className="p-4 border-b">
-            <ModelSelector
-              onModelSelect={handleModelSelect}
-              selectedModelId={selectedModel}
-            />
-            <div className="mt-4 flex items-center">
-              <input
-                type="checkbox"
-                id="keepContext"
-                checked={keepContext}
-                onChange={(e) => setKeepContext(e.target.checked)}
-                className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-              />
-              <label htmlFor="keepContext" className="ml-2 text-sm text-gray-600 dark:text-gray-300">
-                Keep conversation when switching models
-              </label>
-            </div>
-          </div>
-          <div className="border-t flex-1 overflow-y-auto">
-            <SessionHistory onNewSession={handleNewConversation} />
-          </div>
-        </div>
-        
+      <div className="flex h-screen" role="application">
+        <Sidebar />
         <div className="flex-1 flex flex-col ml-64">
           <div className="p-4 border-b flex justify-between items-center fixed top-0 right-0 left-64 bg-white dark:bg-gray-900 z-10">
             <div className="flex space-x-4">
               <button
-                onClick={() => setActiveTab('chat')}
+                onClick={() => handleTabChange('chat')}
                 className={`btn ${activeTab === 'chat' ? 'btn-primary' : 'btn-secondary'}`}
               >
                 Chat
               </button>
               <button
-                onClick={() => setActiveTab('rag')}
+                onClick={() => handleTabChange('rag')}
                 className={`btn ${activeTab === 'rag' ? 'btn-primary' : 'btn-secondary'}`}
               >
                 RAG

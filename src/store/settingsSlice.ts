@@ -2,11 +2,19 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { SystemPrompt, SettingsState, ModelParameters } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
+interface SettingsState {
+  selectedModel: string;
+  modelParameters: ModelParameters;
+  systemPrompt: string;
+  systemPromptHistory: SystemPrompt[];
+}
+
 const initialState: SettingsState = {
+  selectedModel: '',
   modelParameters: {
     temperature: 0.7,
-    maxTokens: 2000,
-    topP: 0.9,
+    maxTokens: 1000,
+    topP: 1,
     frequencyPenalty: 0,
   },
   systemPrompt: '',
@@ -17,6 +25,10 @@ const settingsSlice = createSlice({
   name: 'settings',
   initialState,
   reducers: {
+    setSelectedModel: (state, action: PayloadAction<string>) => {
+      state.selectedModel = action.payload;
+      localStorage.setItem('lastSelectedModel', action.payload);
+    },
     updateModelParameters: (state, action: PayloadAction<Partial<ModelParameters>>) => {
       state.modelParameters = { ...state.modelParameters, ...action.payload };
     },
@@ -39,5 +51,5 @@ const settingsSlice = createSlice({
   },
 });
 
-export const { updateModelParameters, saveSystemPrompt, setActiveSystemPrompt } = settingsSlice.actions;
+export const { setSelectedModel, updateModelParameters, saveSystemPrompt, setActiveSystemPrompt } = settingsSlice.actions;
 export default settingsSlice.reducer; 

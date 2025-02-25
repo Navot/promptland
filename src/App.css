@@ -40,3 +40,104 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Add these styles to align text to the left in chat and conversation history */
+.chat-message-content,
+.conversation-preview {
+  text-align: left;
+}
+
+/* Make sure input fields and textareas are also left-aligned */
+input[type="text"],
+textarea {
+  text-align: left;
+}
+
+/* Ensure message bubbles have proper alignment */
+.message-bubble {
+  text-align: left;
+  padding: 0.125rem 0.375rem;
+  margin-bottom: 0.0625rem;
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.2;
+  border-radius: 0.25rem;
+}
+
+/* Minimal spacing in markdown content */
+.message-bubble .prose {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  max-width: none;
+}
+
+.message-bubble p {
+  margin: 0.125rem 0;
+}
+
+.message-bubble h1, 
+.message-bubble h2, 
+.message-bubble h3, 
+.message-bubble h4 {
+  margin-top: 0.25rem;
+  margin-bottom: 0.125rem;
+  font-size: 0.9375rem;
+}
+
+.message-bubble ul, 
+.message-bubble ol {
+  margin: 0.125rem 0;
+  padding-left: 0.75rem;
+}
+
+.message-bubble li {
+  margin: 0.0625rem 0;
+}
+
+.message-bubble pre {
+  margin: 0.125rem 0;
+  padding: 0.125rem 0.25rem;
+}
+
+.message-bubble code {
+  font-size: 0.75rem;
+  padding: 0.0625rem 0.125rem;
+}
+
+/* Minimal space between messages */
+.space-y-1 > * + * {
+  margin-top: 0.125rem !important;
+}
+
+/* Minimal padding in chat container */
+.chat-container {
+  padding: 0.25rem !important;
+}
+
+/* Compact input area */
+.chat-input-container {
+  padding: 0.25rem !important;
+}
+
+.chat-input {
+  font-size: 0.8125rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  height: 1.75rem;
+}
+
+.chat-send-button {
+  font-size: 0.8125rem;
+  padding: 0.125rem 0.375rem;
+  height: 1.75rem;
+}
+
+/* Fix alignment in the sidebar conversation list */
+.sidebar-conversation {
+  text-align: left;
+  padding: 0.5rem;
+}
+
+.sidebar-conversation .font-medium {
+  line-height: 1.2;
+}
