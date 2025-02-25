@@ -12,8 +12,10 @@ import { ollamaApi } from './api/ollama';
 import { ErrorDisplay } from './components/ErrorDisplay';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { ChartBarIcon } from '@heroicons/react/24/outline';
+import { RagTab } from './components/RagTab';
 
 type SidePanel = 'settings' | 'performance' | null;
+type ActiveTab = 'chat' | 'rag';
 
 function App() {
   const dispatch = useDispatch();
@@ -35,6 +37,7 @@ function App() {
   const systemPrompt = useSelector((state: RootState) => state.settings.systemPrompt);
   const [showPerformance, setShowPerformance] = useState(false);
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
 
   const handleModelSelect = (modelId: string) => {
     setSelectedModel(modelId);
@@ -189,7 +192,21 @@ function App() {
         
         <div className="flex-1 flex flex-col ml-64">
           <div className="p-4 border-b flex justify-between items-center fixed top-0 right-0 left-64 bg-white dark:bg-gray-900 z-10">
-            <h1 className="text-xl font-semibold">Chat</h1>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`btn ${activeTab === 'chat' ? 'btn-primary' : 'btn-secondary'}`}
+              >
+                Chat
+              </button>
+              <button
+                onClick={() => setActiveTab('rag')}
+                className={`btn ${activeTab === 'rag' ? 'btn-primary' : 'btn-secondary'}`}
+              >
+                RAG
+              </button>
+            </div>
+            
             <div className="flex items-center space-x-2">
               {isGenerating && (
                 <button
@@ -217,7 +234,11 @@ function App() {
           
           <div className="flex-1 flex pt-16">
             <div className={`flex-1 flex flex-col ${sidePanel ? 'border-r' : ''}`}>
-              <ChatWindow onSendMessage={handleSendMessage} />
+              {activeTab === 'chat' ? (
+                <ChatWindow onSendMessage={handleSendMessage} />
+              ) : (
+                <RagTab />
+              )}
             </div>
             
             {sidePanel && (
