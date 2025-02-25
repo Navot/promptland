@@ -10,6 +10,10 @@ import { RootState } from './store';
 import { v4 as uuidv4 } from 'uuid';
 import { ollamaApi } from './api/ollama';
 import { ErrorDisplay } from './components/ErrorDisplay';
+import { PerformanceMonitor } from './components/PerformanceMonitor';
+import { ChartBarIcon } from '@heroicons/react/24/outline';
+
+type SidePanel = 'settings' | 'performance' | null;
 
 function App() {
   const dispatch = useDispatch();
@@ -29,6 +33,8 @@ function App() {
   );
   const currentMessages = currentSession?.messages || [];
   const systemPrompt = useSelector((state: RootState) => state.settings.systemPrompt);
+  const [showPerformance, setShowPerformance] = useState(false);
+  const [sidePanel, setSidePanel] = useState<SidePanel>(null);
 
   const handleModelSelect = (modelId: string) => {
     setSelectedModel(modelId);
@@ -150,6 +156,10 @@ function App() {
     }
   };
 
+  const togglePanel = (panel: SidePanel) => {
+    setSidePanel(current => current === panel ? null : panel);
+  };
+
   return (
     <ErrorBoundary>
       <div className="flex h-screen">
@@ -190,8 +200,15 @@ function App() {
                 </button>
               )}
               <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="btn btn-secondary"
+                onClick={() => togglePanel('performance')}
+                className={`btn btn-secondary ${sidePanel === 'performance' ? 'bg-gray-200 dark:bg-gray-700' : ''}`}
+                title="Performance Monitor"
+              >
+                <ChartBarIcon className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => togglePanel('settings')}
+                className={`btn btn-secondary ${sidePanel === 'settings' ? 'bg-gray-200 dark:bg-gray-700' : ''}`}
               >
                 Settings
               </button>
@@ -199,13 +216,17 @@ function App() {
           </div>
           
           <div className="flex-1 flex pt-16">
-            <div className={`flex-1 flex flex-col ${showSettings ? 'border-r' : ''}`}>
+            <div className={`flex-1 flex flex-col ${sidePanel ? 'border-r' : ''}`}>
               <ChatWindow onSendMessage={handleSendMessage} />
             </div>
             
-            {showSettings && (
-              <div className="w-80 fixed right-0 top-16 bottom-0 overflow-y-auto bg-white dark:bg-gray-900">
-                <SettingsPanel />
+            {sidePanel && (
+              <div className="w-80 fixed right-0 top-16 bottom-0 overflow-y-auto bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
+                {sidePanel === 'settings' ? (
+                  <SettingsPanel />
+                ) : (
+                  <PerformanceMonitor />
+                )}
               </div>
             )}
           </div>

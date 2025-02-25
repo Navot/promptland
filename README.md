@@ -1,77 +1,62 @@
-# PromptLand
+# Ollama Chat UI
 
-A modern, responsive chat interface for Ollama language models with real-time streaming responses.
+A minimalist chat interface for Ollama, built with React and TypeScript.
 
 ## Features
 
-- 🚀 Real-time streaming responses
-- 💾 Persistent chat history
-- 🎨 Clean, modern UI with dark mode support
-- ⚙️ Customizable model parameters
-- 📝 Markdown support in messages
-- 🔄 Session management
-- 💡 System prompt customization
-- 🎯 Model selection with context persistence
-- ⚡ Auto-scrolling chat with user scroll override
-- 🌐 Local model integration via Ollama
+- Chat with any model installed in Ollama
+- Real-time streaming responses
+- System prompt customization
+- Model parameter adjustments
+- Conversation history
+- CPU/GPU usage monitoring
+- Dark mode support
 
 ## Prerequisites
 
-- Node.js (v16 or higher)
-- [Ollama](https://ollama.ai/) installed and running locally
+- [Ollama](https://ollama.ai/) installed and running
+- Node.js 18+
+- npm 9+
 
-## Getting Started
+## Setup
 
-1. Clone the repository:
+1. Clone the repository
 ```bash
-git clone https://github.com/Navot/promptland.git
-cd promptland
+git clone https://github.com/yourusername/ollama-chat-ui.git
+cd ollama-chat-ui
 ```
 
-2. Install dependencies:
+2. Install dependencies
 ```bash
 npm install
 ```
 
-3. Start the development server:
+3. Start the development server
 ```bash
-npm start
+npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+4. Start the monitoring server (optional, for CPU/GPU stats)
+```bash
+npm run server
+```
 
-## Tech Stack
+5. Open http://localhost:5173 in your browser
 
-- React
-- TypeScript
-- Redux for state management
+## Usage
+
+1. Select a model from the dropdown (models must be installed in Ollama)
+2. Start chatting
+3. Adjust model parameters and system prompt in Settings
+4. Monitor system resource usage with the Performance panel
+
+## Development
+
+- Built with Vite + React + TypeScript
+- Uses Redux for state management
 - Tailwind CSS for styling
-- React Markdown for message rendering
-
-## Configuration
-
-The app allows customization of various model parameters:
-- Temperature
-- Max Tokens
-- Top P
-- Frequency Penalty
-
-System prompts can be configured to set the behavior and context for the AI model.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Recharts for performance graphs
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Built with [Ollama](https://ollama.ai/)
-- UI inspired by modern chat applications
-
-## Screenshots
-
-[Consider adding screenshots of your application here]
-```
+MIT
