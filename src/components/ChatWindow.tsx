@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { Message } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { RootState } from '../store';
+import { setSelectedConversation } from '../store/chatSlice';
+import { createSelector } from '@reduxjs/toolkit';
 
 interface ChatWindowProps {
   onSendMessage: (content: string) => void;
@@ -46,6 +48,16 @@ const formatMessageContent = (content: string) => {
   );
 };
 
+// Create a memoized selector
+const selectMessages = createSelector(
+  [(state: RootState) => state.chat.sessions, 
+   (state: RootState) => state.chat.currentSessionId],
+  (sessions, currentSessionId) => {
+    const currentSession = sessions.find(s => s.id === currentSessionId);
+    return currentSession?.messages || [];
+  }
+);
+
 export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,12 +65,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
   const [userHasScrolled, setUserHasScrolled] = useState(false);
   const prevMessagesLengthRef = useRef(0);
   
-  const messages = useSelector((state: RootState) => {
-    const currentSession = state.chat.sessions.find(
-      (s) => s.id === state.chat.currentSessionId
-    );
-    return currentSession?.messages || [];
-  });
+  const dispatch = useDispatch();
+  const { conversations, selectedConversationId } = useSelector((state: RootState) => state.chat);
+  const messages = useSelector(selectMessages);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,6 +90,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onSendMessage }) => {
     }
     prevMessagesLengthRef.current = messages.length;
   }, [messages, userHasScrolled]);
+
+  // Move this effect to App.tsx instead
+  useEffect(() => {
+    if (conversations.length > 0 && !selectedConversationId) {
+      dispatch(setSelectedConversation(conversations[0].id));
+    }
+  }, [conversations, selectedConversationId, dispatch]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

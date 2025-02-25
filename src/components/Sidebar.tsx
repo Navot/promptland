@@ -14,19 +14,27 @@ import { PlusIcon } from '@heroicons/react/24/outline';
 export const Sidebar: React.FC = () => {
   const dispatch = useDispatch();
   const { projects, selectedProjectId } = useSelector((state: RootState) => state.rag);
+  const { conversations, selectedConversationId } = useSelector((state: RootState) => state.chat);
   const activeTab = useSelector((state: RootState) => state.ui.activeTab);
   const [keepContext, setKeepContext] = useState(false);
   const selectedModel = useSelector((state: RootState) => 
     state.settings.selectedModel || localStorage.getItem('lastSelectedModel') || ''
   );
-  const { conversations, selectedConversationId } = useSelector((state: RootState) => state.chat);
 
-  // Ensure a conversation is selected when in chat tab
+  // Simple effect to ensure a conversation is selected
   useEffect(() => {
+    console.log('Sidebar Effect Running:', {
+      activeTab,
+      conversationsCount: conversations.length,
+      selectedConversationId,
+      conversations: conversations.map(c => ({ id: c.id, title: c.title }))
+    });
+
     if (activeTab === 'chat' && conversations.length > 0 && !selectedConversationId) {
+      console.log('Selecting first conversation:', conversations[0].id);
       dispatch(setSelectedConversation(conversations[0].id));
     }
-  }, [activeTab, conversations, selectedConversationId, dispatch]);
+  }, [activeTab, conversations, selectedConversationId]); // Add back selectedConversationId to dependencies
 
   const handleProjectSelect = (project: Project) => {
     dispatch(setSelectedProject(project.id));

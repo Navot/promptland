@@ -5,7 +5,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { SessionHistory } from './components/SessionHistory';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useDispatch, useSelector } from 'react-redux';
-import { addMessage, createSession, resetSession, updateMessage, setSelectedConversation } from './store/chatSlice';
+import { addMessage, createSession, resetSession, updateMessage, setSelectedConversation, setConversations } from './store/chatSlice';
 import { RootState } from './store';
 import { v4 as uuidv4 } from 'uuid';
 import { ollamaApi } from './api/ollama';
@@ -47,12 +47,39 @@ function App() {
   const activeTab = useSelector((state: RootState) => state.ui.activeTab);
   const { conversations, selectedConversationId } = useSelector((state: RootState) => state.chat);
 
-  // Set a default conversation when app loads if none is selected
+  // Handle conversation selection
   useEffect(() => {
-    if (conversations.length > 0 && !selectedConversationId) {
+    if (activeTab === 'chat' && conversations.length > 0 && !selectedConversationId) {
       dispatch(setSelectedConversation(conversations[0].id));
     }
-  }, [conversations, selectedConversationId, dispatch]);
+  }, [activeTab, conversations, selectedConversationId, dispatch]);
+
+  useEffect(() => {
+    // Load conversations from localStorage on app startup
+    const loadConversations = () => {
+      try {
+        const savedConversations = localStorage.getItem('conversations');
+        if (savedConversations) {
+          const parsedConversations = JSON.parse(savedConversations);
+          if (Array.isArray(parsedConversations) && parsedConversations.length > 0) {
+            dispatch(setConversations(parsedConversations));
+            
+            // Set selected conversation
+            const savedSelectedId = localStorage.getItem('selectedConversationId');
+            if (savedSelectedId && parsedConversations.some(c => c.id === savedSelectedId)) {
+              dispatch(setSelectedConversation(savedSelectedId));
+            } else {
+              dispatch(setSelectedConversation(parsedConversations[0].id));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading conversations from localStorage:', error);
+      }
+    };
+    
+    loadConversations();
+  }, [dispatch]);
 
   const handleModelSelect = (modelId: string) => {
     setSelectedModel(modelId);

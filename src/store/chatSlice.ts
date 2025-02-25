@@ -36,7 +36,7 @@ const initialState: ChatState = {
   sessions: [],
   currentSessionId: null,
   conversations: [],
-  selectedConversationId: null
+  selectedConversationId: localStorage.getItem('selectedConversationId') || null
 };
 
 export const chatSlice = createSlice({
@@ -94,26 +94,41 @@ export const chatSlice = createSlice({
     },
     setConversations: (state, action: PayloadAction<Conversation[]>) => {
       state.conversations = action.payload;
+      localStorage.setItem('conversations', JSON.stringify(action.payload));
     },
     addConversation: (state, action: PayloadAction<Conversation>) => {
       state.conversations.push(action.payload);
       state.selectedConversationId = action.payload.id;
+      localStorage.setItem('selectedConversationId', action.payload.id);
+      localStorage.setItem('conversations', JSON.stringify(state.conversations));
     },
     updateConversation: (state, action: PayloadAction<Partial<Conversation> & { id: string }>) => {
       const index = state.conversations.findIndex(c => c.id === action.payload.id);
       if (index !== -1) {
         state.conversations[index] = { ...state.conversations[index], ...action.payload };
+        localStorage.setItem('conversations', JSON.stringify(state.conversations));
       }
     },
     deleteConversation: (state, action: PayloadAction<string>) => {
       state.conversations = state.conversations.filter(c => c.id !== action.payload);
       if (state.selectedConversationId === action.payload) {
         state.selectedConversationId = state.conversations.length > 0 ? state.conversations[0].id : null;
+        if (state.selectedConversationId) {
+          localStorage.setItem('selectedConversationId', state.selectedConversationId);
+        } else {
+          localStorage.removeItem('selectedConversationId');
+        }
       }
+      localStorage.setItem('conversations', JSON.stringify(state.conversations));
     },
     // Add this new reducer
     setSelectedConversation: (state, action: PayloadAction<string>) => {
+      console.log('Setting selected conversation:', {
+        newId: action.payload,
+        currentId: state.selectedConversationId
+      });
       state.selectedConversationId = action.payload;
+      localStorage.setItem('selectedConversationId', action.payload);
     }
   },
 });
